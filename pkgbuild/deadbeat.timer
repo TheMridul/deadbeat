@@ -1,5 +1,5 @@
 [Unit]
-Description=Check the jobs Vigil watches every five minutes
+Description=Check the jobs Deadbeat watches every five minutes
 
 [Timer]
 OnBootSec=2min

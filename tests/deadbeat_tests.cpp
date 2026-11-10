@@ -12,7 +12,7 @@
 #include "theme.h"
 #include "translator.h"
 
-class VigilTests : public QObject {
+class DeadbeatTests : public QObject {
     Q_OBJECT
 
 private slots:
@@ -318,5 +318,5 @@ private:
     }
 };
 
-QTEST_MAIN(VigilTests)
-#include "vigil_tests.moc"
+QTEST_MAIN(DeadbeatTests)
+#include "deadbeat_tests.moc"

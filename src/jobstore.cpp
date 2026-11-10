@@ -49,12 +49,12 @@ JobStore::JobStore(const QString &directory)
     : m_directory(directory.isEmpty() ? defaultDirectory() : directory) {}
 
 QString JobStore::defaultDirectory() {
-    // VIGIL_STATE_DIR lets tests and the screenshot harness use a scratch store.
-    const QString override = qEnvironmentVariable("VIGIL_STATE_DIR");
+    // DEADBEAT_STATE_DIR lets tests and the screenshot harness use a scratch store.
+    const QString override = qEnvironmentVariable("DEADBEAT_STATE_DIR");
     if (!override.isEmpty())
         return override;
     const QString state = qEnvironmentVariable("XDG_STATE_HOME", QDir::homePath() + "/.local/state");
-    return state + "/vigil";
+    return state + "/deadbeat";
 }
 
 QString JobStore::newId() {
@@ -103,7 +103,7 @@ bool JobStore::update(const std::function<void(QList<Job> &)> &change, QString *
     lock.setStaleLockTime(15000);
     if (!lock.tryLock(10000)) {
         if (error)
-            *error = QStringLiteral("another vigil is holding %1/jobs.lock").arg(m_directory);
+            *error = QStringLiteral("another deadbeat is holding %1/jobs.lock").arg(m_directory);
         return false;
     }
     QList<Job> jobs = load();

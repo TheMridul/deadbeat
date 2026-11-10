@@ -1,0 +1,6 @@
+[Unit]
+Description=Check the jobs Deadbeat watches
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/deadbeat check

@@ -34,7 +34,7 @@ Backend::Backend(const JobStore &store, QObject *parent, bool autoCheck)
     });
 
     // Remote checks cost an ssh or API round trip, so once a minute is enough
-    // for jobs that run for hours; the timer's `vigil check` covers the time
+    // for jobs that run for hours; the timer's `deadbeat check` covers the time
     // the window is closed.
     m_poll.setInterval(60000);
     connect(&m_poll, &QTimer::timeout, this, &Backend::check);

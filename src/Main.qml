@@ -10,7 +10,7 @@ ApplicationWindow {
     minimumWidth: 560
     minimumHeight: 380
     visible: true
-    title: "Vigil"
+    title: "Deadbeat"
     color: "#0e0e10"
 
     Material.theme: Material.Dark
@@ -102,7 +102,7 @@ ApplicationWindow {
                 spacing: 12
 
                 Label {
-                    text: "Vigil"
+                    text: "Deadbeat"
                     font.pixelSize: 22
                     font.weight: Font.DemiBold
                 }
@@ -172,7 +172,7 @@ ApplicationWindow {
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
                         opacity: 0.6
-                        text: qsTr("Start a job with vigil run, or watch one with vigil add. Agents can do both.")
+                        text: qsTr("Start a job with deadbeat run, or watch one with deadbeat add. Agents can do both.")
                     }
                 }
             }

@@ -20,7 +20,7 @@
   "Checked %1": "%1 जाँचा गया",
   "Not checked yet": "अभी जाँचा नहीं गया",
   "Nothing to watch yet": "अभी देखने को कुछ नहीं है",
-  "Start a job with vigil run, or watch one with vigil add. Agents can do both.": "vigil run से कोई जॉब शुरू करें, या vigil add से किसी पर नज़र रखें। एजेंट दोनों कर सकते हैं।",
+  "Start a job with deadbeat run, or watch one with deadbeat add. Agents can do both.": "deadbeat run से कोई जॉब शुरू करें, या deadbeat add से किसी पर नज़र रखें। एजेंट दोनों कर सकते हैं।",
   "Space checks now · Enter follows the log · ? shows every shortcut": "Space अभी जाँचता है · Enter लॉग दिखाता है · ? सभी शॉर्टकट दिखाता है",
   "Running": "चल रहा है",
   "Stalled": "अटका हुआ",

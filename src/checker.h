@@ -23,7 +23,7 @@ public:
     // that just stalled, finished, failed or ended.
     static QList<Job> merge(QList<Job> &stored, const QList<Job> &results);
     // Merges the results into the store under its lock, then sends the
-    // notifications. Both the window and `vigil check` finish a check here,
+    // notifications. Both the window and `deadbeat check` finish a check here,
     // so a job is announced once even when both are running.
     static bool record(const JobStore &store, const QList<Job> &results, QString *error = nullptr);
     static void notify(const Job &job);

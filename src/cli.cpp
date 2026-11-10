@@ -23,21 +23,21 @@ QTextStream out(stdout);
 QTextStream err(stderr);
 
 const char *usage =
-    "vigil watches long jobs and tells you when they stall, finish or fail.\n"
+    "deadbeat watches long jobs and tells you when they stall, finish or fail.\n"
     "\n"
-    "  vigil [open]                          the window\n"
-    "  vigil run --name N [--stall MIN] -- COMMAND...\n"
+    "  deadbeat [open]                          the window\n"
+    "  deadbeat run --name N [--stall MIN] -- COMMAND...\n"
     "                                        start COMMAND in the background and watch it\n"
-    "  vigil add ssh --name N --host H --log PATH [--pid PID] [--stall MIN]\n"
+    "  deadbeat add ssh --name N --host H --log PATH [--pid PID] [--stall MIN]\n"
     "                                        watch a log (and process) on an ssh host\n"
-    "  vigil add ec2 --name N --instance ID [--region R]\n"
+    "  deadbeat add ec2 --name N --instance ID [--region R]\n"
     "                                        watch an EC2 instance until it stops\n"
-    "  vigil add git --name N --repo OWNER/REPO [--branch B] [--stall MIN]\n"
+    "  deadbeat add git --name N --repo OWNER/REPO [--branch B] [--stall MIN]\n"
     "                                        watch a branch that a loop pushes to\n"
-    "  vigil list                            the jobs as last checked\n"
-    "  vigil check                           check every job now and notify\n"
-    "  vigil remove ID                       stop watching a job (it keeps running)\n"
-    "  vigil skill install                   install the agent skill\n"
+    "  deadbeat list                            the jobs as last checked\n"
+    "  deadbeat check                           check every job now and notify\n"
+    "  deadbeat remove ID                       stop watching a job (it keeps running)\n"
+    "  deadbeat skill install                   install the agent skill\n"
     "\n"
     "Every command takes --json. A job is stalled when its log, or the branch,\n"
     "has been quiet longer than --stall minutes (20, or 180 for git).\n";
@@ -79,7 +79,7 @@ Options parse(const QStringList &args) {
 }
 
 int fail(const QString &message) {
-    err << "vigil: " << message << "\n";
+    err << "deadbeat: " << message << "\n";
     err.flush();
     return 1;
 }
@@ -104,7 +104,7 @@ void printJobs(const QList<Job> &jobs, bool json) {
         return;
     }
     if (jobs.isEmpty())
-        out << "No jobs. Add one with vigil run or vigil add.\n";
+        out << "No jobs. Add one with deadbeat run or deadbeat add.\n";
     for (const Job &job : jobs)
         out << job.id << "  " << job.state.leftJustified(8) << job.name << "  (" << job.source() << ")"
             << (job.detail.isEmpty() ? QString() : "\n        " + job.detail) << "\n";
@@ -150,12 +150,12 @@ int runCommand(const Options &o) {
     const QString exitFile = store.logDirectory() + "/" + id + ".exit";
 
     // A small shell owns the command so its exit code lands in a file, which
-    // is how a later `vigil check` tells done from failed. Its own session
+    // is how a later `deadbeat check` tells done from failed. Its own session
     // keeps it alive when the terminal or agent that started it goes away.
     QProcess process;
     process.setProgram("sh");
     process.setArguments(QStringList{"-c", "log=$1 exitf=$2; shift 2; \"$@\" >\"$log\" 2>&1 </dev/null; "
-                                           "echo $? >\"$exitf\"", "vigil-run", log, exitFile} + o.command);
+                                           "echo $? >\"$exitf\"", "deadbeat-run", log, exitFile} + o.command);
     process.setWorkingDirectory(QDir::currentPath());
     process.setStandardInputFile(QProcess::nullDevice());
     process.setStandardOutputFile(QProcess::nullDevice());
@@ -206,7 +206,7 @@ int check(const Options &o) {
 
 int remove(const Options &o) {
     if (o.positional.size() < 2)
-        return fail("which job? vigil remove ID");
+        return fail("which job? deadbeat remove ID");
     const QString id = o.positional.at(1);
     bool found = false;
     QString error;
@@ -225,10 +225,10 @@ int remove(const Options &o) {
 }
 
 int installSkill(const Options &o) {
-    const QString root = qEnvironmentVariable("VIGIL_SKILL_DIR", QDir::homePath() + "/.agents/skills");
-    const QString path = root + "/vigil/SKILL.md";
+    const QString root = qEnvironmentVariable("DEADBEAT_SKILL_DIR", QDir::homePath() + "/.agents/skills");
+    const QString path = root + "/deadbeat/SKILL.md";
     QFile source(":/skill/SKILL.md");
-    if (!source.open(QIODevice::ReadOnly) || !QDir().mkpath(root + "/vigil"))
+    if (!source.open(QIODevice::ReadOnly) || !QDir().mkpath(root + "/deadbeat"))
         return fail("cannot write " + path);
     QSaveFile target(path);
     if (!target.open(QIODevice::WriteOnly) || target.write(source.readAll()) < 0 || !target.commit())
@@ -299,8 +299,8 @@ int Cli::run(const QStringList &args) {
     if (command == "skill" && o.positional.value(1) == "install")
         return installSkill(o);
     if (command == "--version" || command == "version") {
-        out << "vigil 0.1.0\n";
+        out << "deadbeat 0.1.0\n";
         return 0;
     }
-    return fail("unknown command " + command + "; see vigil help");
+    return fail("unknown command " + command + "; see deadbeat help");
 }

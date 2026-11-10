@@ -28,8 +28,8 @@ struct Job {
     QString source() const;
 };
 
-// The jobs live in one JSON file that the window, the timer's `vigil check`
-// and agents' `vigil add` all change, so every change goes through update(),
+// The jobs live in one JSON file that the window, the timer's `deadbeat check`
+// and agents' `deadbeat add` all change, so every change goes through update(),
 // which holds a lock file across the read and the atomic save.
 class JobStore {
 public:

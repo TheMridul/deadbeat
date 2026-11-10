@@ -12,7 +12,7 @@
 #include "jobstore.h"
 
 // The window's view of the job store. It reloads whenever the file changes
-// (an agent ran `vigil add`), checks every job each minute while open, and
+// (an agent ran `deadbeat add`), checks every job each minute while open, and
 // keeps removals undoable.
 class Backend : public QObject {
     Q_OBJECT

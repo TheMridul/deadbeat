@@ -116,6 +116,6 @@ QString Notification::title(const Job &job) {
 
 void Checker::notify(const Job &job) {
     const bool bad = job.state == "failed" || job.state == "stalled";
-    QProcess::startDetached("notify-send", {"-a", "Vigil", "-i", "vigil", "-u", bad ? "critical" : "normal",
+    QProcess::startDetached("notify-send", {"-a", "Deadbeat", "-i", "deadbeat", "-u", bad ? "critical" : "normal",
                                             Notification::title(job), job.detail});
 }

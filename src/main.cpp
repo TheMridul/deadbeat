@@ -1,4 +1,4 @@
-// vigil: watches long jobs and says when they stall, finish or fail.
+// deadbeat: watches long jobs and says when they stall, finish or fail.
 
 #include <QGuiApplication>
 #include <QIcon>
@@ -24,15 +24,15 @@ int main(int argc, char *argv[]) {
         qputenv("QT_QPA_PLATFORM", "offscreen");
 
     QGuiApplication app(argc, argv);
-    app.setApplicationName("vigil");
+    app.setApplicationName("deadbeat");
     app.setApplicationVersion("0.1.0");
     if (!window)
         return Cli::run(args);
 
-    // Matches the window to vigil.desktop, so the compositor (Wayland app_id)
+    // Matches the window to deadbeat.desktop, so the compositor (Wayland app_id)
     // and the launcher pick up the installed icon.
-    app.setDesktopFileName("vigil");
-    app.setWindowIcon(QIcon::fromTheme("vigil"));
+    app.setDesktopFileName("deadbeat");
+    app.setWindowIcon(QIcon::fromTheme("deadbeat"));
 
     QQuickStyle::setStyle("Material");
 
