@@ -1,0 +1,20 @@
+[package]
+name = "deadbeat"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.89"
+description = "Catches your deadbeat jobs: a notification when a long job stalls, finishes or fails"
+license = "MIT"
+repository = "https://github.com/TheMridul/deadbeat"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+lto = "thin"

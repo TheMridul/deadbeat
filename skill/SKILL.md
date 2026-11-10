@@ -7,7 +7,7 @@ description: Register long-running jobs (training runs, exports, builds, remote 
 
 Deadbeat watches jobs and sends a desktop notification when one stalls (its log
 or branch goes quiet), finishes, fails or ends. A timer runs `deadbeat check`
-every five minutes, so jobs are watched even when no agent or window is open.
+every five minutes, so jobs are watched even when no agent is running. On Omarchy, the bar panel shows them too.
 
 ## Starting a job you will not wait on
 

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.themridul.deadbeat",
+  "name": "Deadbeat",
+  "version": "0.2.0",
+  "author": "TheMridul",
+  "license": "MIT",
+  "description": "Catches your deadbeat jobs: training runs, exports, builds, EC2 instances and agent loops, with a notification when one stalls, finishes or fails.",
+  "homepage": "https://github.com/TheMridul/deadbeat",
+  "kinds": ["bar-widget"],
+  "entryPoints": { "barWidget": "Panel.qml" },
+  "barWidget": {
+    "displayName": "Deadbeat",
+    "description": "Long jobs at a glance: a count when something is running, red when one stalls or fails",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": { "hideWhenIdle": true },
+    "schema": [
+      { "key": "hideWhenIdle", "type": "bool", "label": "Hide when there are no jobs" }
+    ]
+  }
+}
