@@ -1,0 +1,22 @@
+pkgbase = deadbeat
+	pkgdesc = Catches your deadbeat jobs: a notification when a long job stalls, finishes or fails
+	pkgver = 0.2.0
+	pkgrel = 1
+	url = https://github.com/TheMridul/deadbeat
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	makedepends = cargo
+	depends = gcc-libs
+	depends = glibc
+	depends = libnotify
+	depends = openssh
+	depends = coreutils
+	optdepends = aws-cli-v2: watch EC2 instances and hosts behind SSM
+	optdepends = github-cli: watch branches that a loop pushes to
+	optdepends = xdg-terminal-exec: follow logs from the Omarchy bar panel
+	options = !lto
+	source = deadbeat-0.2.0.tar.gz::https://github.com/TheMridul/deadbeat/archive/refs/tags/v0.2.0.tar.gz
+	sha256sums = 9449109f0f4b2386831e93969c54e13a22d2362c2b23edc97422aa9be975f552
+
+pkgname = deadbeat

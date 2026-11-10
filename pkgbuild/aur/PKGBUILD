@@ -1,0 +1,46 @@
+# Maintainer: TheMridul <238811143+TheMridul@users.noreply.github.com>
+# AUR copy: builds the tagged release. ../PKGBUILD builds the working tree.
+pkgname=deadbeat
+pkgver=0.2.0
+pkgrel=1
+pkgdesc='Catches your deadbeat jobs: a notification when a long job stalls, finishes or fails'
+arch=('x86_64' 'aarch64')
+url='https://github.com/TheMridul/deadbeat'
+license=('MIT')
+depends=('gcc-libs' 'glibc' 'libnotify' 'openssh' 'coreutils')
+optdepends=('aws-cli-v2: watch EC2 instances and hosts behind SSM'
+            'github-cli: watch branches that a loop pushes to'
+            'xdg-terminal-exec: follow logs from the Omarchy bar panel')
+makedepends=('cargo')
+options=('!lto')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('9449109f0f4b2386831e93969c54e13a22d2362c2b23edc97422aa9be975f552')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc --print host-tuple)"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo test --frozen --release
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 target/release/deadbeat "$pkgdir/usr/bin/deadbeat"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 pkgbuild/deadbeat.svg "$pkgdir/usr/share/icons/hicolor/scalable/apps/deadbeat.svg"
+  install -Dm644 pkgbuild/deadbeat.service "$pkgdir/usr/lib/systemd/user/deadbeat.service"
+  install -Dm644 pkgbuild/deadbeat.timer "$pkgdir/usr/lib/systemd/user/deadbeat.timer"
+}

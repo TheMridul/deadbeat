@@ -52,6 +52,18 @@ omarchy plugin add https://github.com/TheMridul/deadbeat.git --enable
 The plugin needs the `deadbeat` tool; without it, the panel shows how to
 install it. By default the icon hides when there are no jobs.
 
+## Remove
+
+```sh
+omarchy plugin remove io.github.themridul.deadbeat
+systemctl --user disable --now deadbeat.timer
+sudo pacman -R deadbeat
+rm -r ~/.local/state/deadbeat ~/.agents/skills/deadbeat    # jobs, logs and the skill
+```
+
+Removing stops the watching only; jobs that `deadbeat run` started keep
+running.
+
 ## Commands
 
 Every command takes `--json`, exits 0 or 1, and writes errors to stderr.

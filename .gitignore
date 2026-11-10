@@ -2,3 +2,6 @@
 /pkgbuild/pkg/
 /pkgbuild/src/
 *.pkg.tar.*
+/pkgbuild/aur/*
+!/pkgbuild/aur/PKGBUILD
+!/pkgbuild/aur/.SRCINFO
