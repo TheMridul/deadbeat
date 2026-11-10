@@ -1,0 +1,14 @@
+{
+  "%n min ago": {
+    "one": "%n min ago",
+    "other": "%n min ago"
+  },
+  "%n h ago": {
+    "one": "%n h ago",
+    "other": "%n h ago"
+  },
+  "%n d ago": {
+    "one": "%n day ago",
+    "other": "%n days ago"
+  }
+}

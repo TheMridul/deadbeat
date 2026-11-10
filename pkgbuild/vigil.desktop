@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Vigil
+Name[hi]=Vigil
+Comment=Watch long jobs and hear when they stall, finish or fail
+Comment[hi]=लंबे जॉब पर नज़र रखें और जानें कि वे कब अटकते, पूरे होते या विफल होते हैं
+Exec=vigil open
+Icon=vigil
+Terminal=false
+Categories=Utility;Development;
+StartupWMClass=vigil

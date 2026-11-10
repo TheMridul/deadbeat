@@ -1,0 +1,28 @@
+pkgname=vigil
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Watch long jobs and hear when they stall, finish or fail'
+arch=('x86_64' 'aarch64')
+license=('MIT')
+depends=('qt6-base' 'qt6-declarative' 'qt6-wayland' 'libnotify' 'openssh')
+optdepends=('aws-cli-v2: watch EC2 instances and hosts behind SSM'
+            'github-cli: watch branches that a loop pushes to'
+            'xdg-terminal-exec: follow logs from the window')
+makedepends=('gcc' 'make')
+source=()
+sha256sums=()
+
+build() {
+  cd "$startdir/.."
+  ./bin/build
+}
+
+package() {
+  cd "$startdir/.."
+  install -Dm755 build/vigil "$pkgdir/usr/bin/vigil"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 "$startdir/vigil.svg" "$pkgdir/usr/share/icons/hicolor/scalable/apps/vigil.svg"
+  install -Dm644 "$startdir/vigil.desktop" "$pkgdir/usr/share/applications/vigil.desktop"
+  install -Dm644 "$startdir/vigil.service" "$pkgdir/usr/lib/systemd/user/vigil.service"
+  install -Dm644 "$startdir/vigil.timer" "$pkgdir/usr/lib/systemd/user/vigil.timer"
+}

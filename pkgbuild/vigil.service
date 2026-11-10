@@ -1,0 +1,6 @@
+[Unit]
+Description=Check the jobs Vigil watches
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/vigil check
