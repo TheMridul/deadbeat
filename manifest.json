@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.themridul.deadbeat",
   "name": "Deadbeat",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "author": "TheMridul",
   "license": "MIT",
   "description": "Catches your deadbeat jobs: training runs, exports, builds, EC2 instances and agent loops, with a notification when one stalls, finishes or fails.",
