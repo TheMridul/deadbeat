@@ -1,5 +1,6 @@
 //! Checking every job at once, and the notifications that come out of it.
 
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::thread;
 
@@ -84,8 +85,30 @@ pub fn record(store: &Store, results: &[Job]) -> Result<(), String> {
     let to_notify = store.update(|stored| merge(stored, results))?;
     for job in &to_notify {
         notify(job);
+        if let Some((name, command, dir)) = output_download(job) {
+            // A job of its own, so a slow or failed download is watched and
+            // announced like anything else.
+            let started = std::fs::create_dir_all(&dir)
+                .map_err(|e| format!("cannot create {dir}: {e}"))
+                .and_then(|()| crate::start(store, &name, &command, Path::new(&dir), 60));
+            if let Err(message) = started {
+                eprintln!("deadbeat: cannot fetch the output of {}: {message}", job.name);
+            }
+        }
     }
     Ok(())
+}
+
+/// For a Kaggle job that just finished or failed and has --output, the job
+/// that fetches its output: a name, the command, and the directory. A failed
+/// run's output holds its log, which is what explains the failure.
+pub fn output_download(job: &Job) -> Option<(String, Vec<String>, String)> {
+    let dir = job.text("output");
+    if job.kind != "kaggle" || dir.is_empty() || !(job.state == "done" || job.state == "failed") {
+        return None;
+    }
+    let command = [job.text("cli"), "kernels", "output", job.text("kernel"), "-p", dir, "-o"];
+    Some((format!("{} output", job.name), command.map(String::from).to_vec(), dir.to_string()))
 }
 
 pub fn title(job: &Job) -> String {
@@ -101,11 +124,18 @@ fn notify(job: &Job) {
     let urgency = if job.state == "failed" || job.state == "stalled" { "critical" } else { "normal" };
     // An AppImage parent (T3 Code, for one) leaks its LD_LIBRARY_PATH, and
     // notify-send then loads the wrong libnotify and dies.
-    let _ = Command::new("notify-send")
+    let status = Command::new("notify-send")
         .env_remove("LD_LIBRARY_PATH")
         .args(["-a", "Deadbeat", "-i", "deadbeat", "-u", urgency, &title(job), &job.detail])
         .stdin(Stdio::null())
         .status();
+    // To stderr, so the timer's journal shows whether each notification went
+    // out; --json output on stdout stays clean.
+    match status {
+        Ok(status) if status.success() => eprintln!("deadbeat: notified \"{}\"", title(job)),
+        Ok(status) => eprintln!("deadbeat: notify-send failed ({status}) for \"{}\"", title(job)),
+        Err(e) => eprintln!("deadbeat: cannot run notify-send ({e}) for \"{}\"", title(job)),
+    }
 }
 
 #[cfg(test)]
@@ -136,6 +166,38 @@ mod tests {
         let mut empty: Vec<Job> = Vec::new();
         assert_eq!(merge(&mut empty, &[result]).len(), 0);
         assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn an_ended_instance_is_announced_once_even_after_aws_forgets_it() {
+        let stored = Job { id: "a".into(), kind: "ec2".into(), state: "running".into(), ..Job::default() };
+        let mut jobs = vec![stored.clone()];
+        let mut result = stored;
+        result.state = "ended".into();
+        assert_eq!(merge(&mut jobs, &[result.clone()]).len(), 1);
+        assert_eq!(jobs[0].notified, "ended");
+        // A failed check in between (an expired login) must not re-announce it.
+        result.state = "unknown".into();
+        assert_eq!(merge(&mut jobs, &[result.clone()]).len(), 0);
+        result.state = "ended".into();
+        assert_eq!(merge(&mut jobs, &[result]).len(), 0);
+    }
+
+    #[test]
+    fn kaggle_output_is_fetched_when_the_kernel_ends() {
+        let spec = serde_json::json!({"kernel": "me/train", "cli": "/v/kaggle", "output": "/out"});
+        let mut job = Job { name: "train".into(), kind: "kaggle".into(), state: "done".into(), ..Job::default() };
+        job.spec = spec.as_object().unwrap().clone();
+        let (name, command, dir) = output_download(&job).unwrap();
+        assert_eq!((name.as_str(), dir.as_str()), ("train output", "/out"));
+        assert_eq!(command, ["/v/kaggle", "kernels", "output", "me/train", "-p", "/out", "-o"]);
+        job.state = "failed".into();
+        assert!(output_download(&job).is_some());
+        job.state = "stalled".into();
+        assert!(output_download(&job).is_none());
+        job.state = "done".into();
+        job.spec.remove("output");
+        assert!(output_download(&job).is_none());
     }
 
     #[test]

@@ -1,7 +1,8 @@
 //! How each kind of job is checked.
 //!
-//! A remote kind is one command (ssh, aws or gh) whose output `evaluate` turns
-//! into a state; a local job is read straight from /proc and its own files.
+//! A remote kind is one command (ssh, aws, gh or kaggle) whose output
+//! `evaluate` turns into a state; a local job is read straight from /proc and
+//! its own files.
 //! Everything here is pure apart from the files a local job reads, so the
 //! tests drive it with canned output.
 
@@ -81,8 +82,26 @@ pub fn error_text(err: &[u8], code: i32) -> String {
     if text.to_lowercase().contains("expired") || text.contains("aws login") || text.contains("ExpiredToken") {
         return "AWS session ended; run aws login".into();
     }
+    if text.contains("Unable to locate credentials") {
+        return "No AWS credentials; run aws login".into();
+    }
     let line = last_line(err);
     if line.is_empty() { format!("Exited with code {code}") } else { line }
+}
+
+/// Kaggle's own errors are a page of sign-in help (on stdout) or a paragraph
+/// about benchmark slugs (on stderr); this keeps the part that says what to do.
+fn kaggle_error(out: &[u8], err: &[u8], code: i32) -> String {
+    let text = String::from_utf8_lossy(out) + String::from_utf8_lossy(err);
+    if text.contains("Authentication required") {
+        "Not signed in to Kaggle; run kaggle auth login".into()
+    } else if text.contains("Cannot access kernel") {
+        "Cannot access the kernel; check its slug".into()
+    } else if text.contains("401 Client Error") || text.contains("Unauthorized") {
+        "Kaggle refused the credentials; run kaggle auth login".into()
+    } else {
+        error_text(if err.is_empty() { out } else { err }, code)
+    }
 }
 
 /// The kernel's start time of a process, so a reused PID is not mistaken for
@@ -145,6 +164,10 @@ pub fn command(job: &Job) -> Option<Command> {
             }
             Some(Command { program: "aws".into(), args })
         }
+        "kaggle" => Some(Command {
+            program: job.text("cli").into(),
+            args: vec!["kernels".into(), "status".into(), job.text("kernel").into()],
+        }),
         "git" => Some(Command {
             program: "gh".into(),
             args: vec![
@@ -175,13 +198,22 @@ fn set(job: &mut Job, state: &str, detail: impl Into<String>) {
 
 pub fn evaluate(job: &mut Job, code: i32, out: &[u8], err: &[u8], now: i64) {
     job.checked = now;
-    if job.kind == "ec2" && String::from_utf8_lossy(err).contains("InvalidInstanceID.NotFound") {
-        return set(job, "ended", "Instance no longer exists");
+    if job.kind == "ec2" && instance_gone(code, out, err) {
+        // AWS forgets a terminated instance within about an hour, after which
+        // it answers NotFound or no reservation at all. The instance is still
+        // ended, and the reason seen before ("terminated: User initiated")
+        // says more than its absence.
+        if job.state != "ended" || job.detail.is_empty() {
+            job.detail = "Instance no longer exists".into();
+        }
+        job.state = "ended".into();
+        return;
     }
     if code != 0 {
         // A failed check says nothing about the job itself, so keep its last
         // known activity and only report why the check failed.
-        return set(job, "unknown", error_text(err, code));
+        let detail = if job.kind == "kaggle" { kaggle_error(out, err, code) } else { error_text(err, code) };
+        return set(job, "unknown", detail);
     }
 
     match job.kind.as_str() {
@@ -215,6 +247,9 @@ pub fn evaluate(job: &mut Job, code: i32, out: &[u8], err: &[u8], now: i64) {
             let reply: Value = serde_json::from_slice(out).unwrap_or(Value::Null);
             let field = |key: &str| reply.get(key).and_then(Value::as_str).unwrap_or("").to_string();
             let state = field("state");
+            if state.is_empty() {
+                return set(job, "unknown", "Unexpected reply from AWS");
+            }
             job.activity = parse_iso(&field("launch"));
             if state == "running" || state == "pending" {
                 let spot = field("lifecycle") == "spot";
@@ -222,8 +257,36 @@ pub fn evaluate(job: &mut Job, code: i32, out: &[u8], err: &[u8], now: i64) {
             } else {
                 let reason = field("reason");
                 let detail = if reason.is_empty() { state.clone() } else { format!("{state}: {reason}") };
-                set(job, if state.is_empty() { "unknown" } else { "ended" }, detail);
+                set(job, "ended", detail);
             }
+        }
+        "kaggle" => {
+            let text = String::from_utf8_lossy(out);
+            let Some(status) = text.lines().find_map(|line| line.split_once(" has status ")) else {
+                return set(job, "unknown", "Unexpected reply from Kaggle");
+            };
+            let status = status.1.trim().trim_matches('"');
+            let failure = text
+                .lines()
+                .find_map(|line| line.strip_prefix("Failure message:"))
+                .map(|message| message.trim().trim_matches('"').to_string())
+                .unwrap_or_default();
+            // "KernelWorkerStatus.RUNNING" in the 2.x CLI, "running" in older ones.
+            let (state, detail) = match status.rsplit('.').next().unwrap_or("").to_lowercase().as_str() {
+                "queued" | "new_script" => ("running", "Queued".to_string()),
+                "running" => ("running", "Running".to_string()),
+                "complete" => ("done", "Complete".to_string()),
+                "error" if failure.is_empty() => ("failed", "Error".to_string()),
+                "error" => ("failed", failure.chars().take(200).collect()),
+                "cancel_requested" | "cancel_acknowledged" => ("failed", "Cancelled".to_string()),
+                _ => ("unknown", format!("Unexpected Kaggle status {status}")),
+            };
+            // Kaggle gives no sign of life while a kernel runs, so activity is
+            // when it was added, then when it finished.
+            if state != "running" && state != "unknown" && job.state != state {
+                job.activity = now;
+            }
+            set(job, state, detail);
         }
         "git" => {
             let text = String::from_utf8_lossy(out);
@@ -238,6 +301,13 @@ pub fn evaluate(job: &mut Job, code: i32, out: &[u8], err: &[u8], now: i64) {
         }
         _ => {}
     }
+}
+
+/// Whether AWS no longer knows the instance: a NotFound error, or a reply
+/// whose query found no reservation and printed null.
+fn instance_gone(code: i32, out: &[u8], err: &[u8]) -> bool {
+    String::from_utf8_lossy(err).contains("InvalidInstanceID.NotFound")
+        || (code == 0 && serde_json::from_slice::<Value>(out).is_ok_and(|reply| reply.is_null()))
 }
 
 fn tail(path: &str, bytes: u64) -> Vec<u8> {
@@ -416,6 +486,86 @@ mod tests {
 
         evaluate(&mut job, 254, b"", b"An error occurred (InvalidInstanceID.NotFound) when calling", now());
         assert_eq!(job.state, "ended");
+    }
+
+    #[test]
+    fn a_terminated_instance_stays_ended_once_aws_forgets_it() {
+        // 18 Nov 2026: i-0dd47fd562a7c613a showed "terminated: User initiated"
+        // for an hour, then describe-instances found no reservation, the
+        // query printed null, and the job dropped to unknown with no detail.
+        let mut job = job("ec2", json!({"instance": "i-0dd47fd562a7c613a", "region": "ap-south-1"}));
+        let running = br#"{"state":"running","launch":"2026-11-18T13:00:00+00:00","lifecycle":"spot","reason":""}"#;
+        evaluate(&mut job, 0, running, b"", now());
+        evaluate(&mut job, 0, br#"{"state":"terminated","reason":"User initiated"}"#, b"", now());
+        assert_eq!((job.state.as_str(), job.detail.as_str()), ("ended", "terminated: User initiated"));
+
+        evaluate(&mut job, 0, b"null\n", b"", now());
+        assert_eq!((job.state.as_str(), job.detail.as_str()), ("ended", "terminated: User initiated"));
+        evaluate(&mut job, 254, b"", b"An error occurred (InvalidInstanceID.NotFound) when calling", now());
+        assert_eq!((job.state.as_str(), job.detail.as_str()), ("ended", "terminated: User initiated"));
+
+        // Never seen ending: still ended, and says why.
+        let mut fresh = job_with_instance();
+        evaluate(&mut fresh, 0, b"null\n", b"", now());
+        assert_eq!((fresh.state.as_str(), fresh.detail.as_str()), ("ended", "Instance no longer exists"));
+
+        // A reply that is neither an instance nor null is a failed check.
+        evaluate(&mut fresh, 0, b"", b"", now());
+        assert_eq!((fresh.state.as_str(), fresh.detail.as_str()), ("unknown", "Unexpected reply from AWS"));
+    }
+
+    fn job_with_instance() -> Job {
+        job("ec2", json!({"instance": "i-0123456789abcdef0"}))
+    }
+
+    #[test]
+    fn aws_credential_failures_say_what_to_do() {
+        let mut job = job_with_instance();
+        job.state = "ended".into();
+        let expired = b"\nYour session has expired. Please reauthenticate using 'aws login'.\n";
+        evaluate(&mut job, 255, b"", expired, now());
+        assert_eq!((job.state.as_str(), job.detail.as_str()), ("unknown", "AWS session ended; run aws login"));
+        let missing = b"\nUnable to locate credentials. You can configure credentials by running \"aws configure\".\n";
+        evaluate(&mut job, 255, b"", missing, now());
+        assert_eq!(job.detail, "No AWS credentials; run aws login");
+    }
+
+    #[test]
+    fn kaggle_statuses_map_to_states() {
+        let mut job = job("kaggle", json!({"kernel": "me/train", "cli": "/opt/kaggle"}));
+        job.activity = 100;
+        let command = command(&job).unwrap();
+        assert_eq!(command.program, "/opt/kaggle");
+        assert_eq!(command.args, ["kernels", "status", "me/train"]);
+
+        let status = |s: &str| format!("me/train has status \"{s}\"\n").into_bytes();
+        evaluate(&mut job, 0, &status("KernelWorkerStatus.QUEUED"), b"", 5000);
+        assert_eq!((job.state.as_str(), job.detail.as_str(), job.activity), ("running", "Queued", 100));
+        evaluate(&mut job, 0, &status("KernelWorkerStatus.RUNNING"), b"", 5000);
+        assert_eq!((job.state.as_str(), job.detail.as_str(), job.activity), ("running", "Running", 100));
+        evaluate(&mut job, 0, &status("KernelWorkerStatus.COMPLETE"), b"", 6000);
+        assert_eq!((job.state.as_str(), job.activity), ("done", 6000));
+        evaluate(&mut job, 0, &status("complete"), b"", 7000);
+        assert_eq!((job.state.as_str(), job.activity), ("done", 6000));
+
+        let mut failure = status("KernelWorkerStatus.ERROR");
+        failure.extend_from_slice(b"Failure message: \"CUDA out of memory\"\n");
+        evaluate(&mut job, 0, &failure, b"", 8000);
+        assert_eq!((job.state.as_str(), job.detail.as_str()), ("failed", "CUDA out of memory"));
+        evaluate(&mut job, 0, &status("KernelWorkerStatus.CANCEL_ACKNOWLEDGED"), b"", 8000);
+        assert_eq!((job.state.as_str(), job.detail.as_str()), ("failed", "Cancelled"));
+        evaluate(&mut job, 0, b"Warning: a newer version is out\n", b"", 8000);
+        assert_eq!((job.state.as_str(), job.detail.as_str()), ("unknown", "Unexpected reply from Kaggle"));
+    }
+
+    #[test]
+    fn kaggle_errors_are_short() {
+        let mut job = job("kaggle", json!({"kernel": "me/nope", "cli": "kaggle"}));
+        let denied = b"Cannot access kernel 'me/nope' (Permission 'kernels.get' was denied). The most likely cause";
+        evaluate(&mut job, 1, b"", denied, 1);
+        assert_eq!((job.state.as_str(), job.detail.as_str()), ("unknown", "Cannot access the kernel; check its slug"));
+        evaluate(&mut job, 1, b"Authentication required to call the Kaggle API.\n\nFirst, you will need", b"", 1);
+        assert_eq!(job.detail, "Not signed in to Kaggle; run kaggle auth login");
     }
 
     #[test]

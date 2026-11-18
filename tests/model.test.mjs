@@ -72,6 +72,9 @@ test("follow commands are argv lists that refuse odd input", () => {
   assert.equal(Model.followCommand(job("ec2", { instance: "i-0abc", region: "us-east-1" }))[1],
     "https://console.aws.amazon.com/ec2/home?region=us-east-1#InstanceDetails:instanceId=i-0abc")
   assert.equal(Model.followCommand(job("ec2", { instance: "i-0abc&x=1" })), null)
+  assert.equal(Model.followCommand(job("kaggle", { kernel: "me/train-1" }))[1], "https://www.kaggle.com/code/me/train-1")
+  assert.equal(Model.followCommand(job("kaggle", { kernel: "me/../../x" })), null)
+  assert.equal(job("kaggle", { kernel: "me/train-1" }).source, "me/train-1")
 })
 
 test("aws badge data", () => {

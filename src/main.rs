@@ -7,6 +7,7 @@ mod store;
 use std::collections::HashMap;
 use std::fs;
 use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -25,6 +26,9 @@ deadbeat watches long jobs and tells you when they stall, finish or fail.
                                         watch an EC2 instance until it stops
   deadbeat add git --name N --repo OWNER/REPO [--branch B] [--stall MIN]
                                         watch a branch that a loop pushes to
+  deadbeat add kaggle --name N --kernel OWNER/SLUG [--output DIR] [--kaggle PATH]
+                                        watch a Kaggle kernel run, and fetch its
+                                        output into DIR when it ends
   deadbeat list                         the jobs as last checked
   deadbeat check                        check every job now and notify
   deadbeat remove ID                    stop watching a job (it keeps running)
@@ -36,7 +40,10 @@ has been quiet longer than --stall minutes (20, or 180 for git).
 
 const SKILL: &str = include_str!("../skill/SKILL.md");
 
-const VALUED: [&str; 9] = ["--name", "--stall", "--host", "--log", "--pid", "--instance", "--region", "--repo", "--branch"];
+const VALUED: [&str; 12] = [
+    "--name", "--stall", "--host", "--log", "--pid", "--instance", "--region", "--repo", "--branch", "--kernel",
+    "--output", "--kaggle",
+];
 
 pub fn now() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
@@ -152,7 +159,19 @@ fn add(o: &Options) -> Result<(), String> {
             job.spec = spec(json!({"repo": o.value("repo"), "branch": branch}));
             job.stall_minutes = 180;
         }
-        _ => return Err("add takes ssh, ec2 or git".into()),
+        "kaggle" => {
+            let kernel = o.value("kernel");
+            let word = |w: &str| !w.is_empty() && w.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c));
+            if !kernel.split_once('/').is_some_and(|(owner, slug)| word(owner) && word(slug)) {
+                return Err("add kaggle needs --kernel OWNER/SLUG, as in kaggle.com/code/OWNER/SLUG".into());
+            }
+            let cli = kaggle_cli(o.values.get("kaggle").map(String::as_str))?;
+            job.spec = spec(json!({"kernel": kernel, "cli": cli}));
+            if let Some(output) = o.values.get("output") {
+                job.spec.insert("output".into(), json!(absolute(output)?));
+            }
+        }
+        _ => return Err("add takes ssh, ec2, git or kaggle".into()),
     }
     job.name = o.value("name").to_string();
     if job.name.is_empty() {
@@ -163,6 +182,10 @@ fn add(o: &Options) -> Result<(), String> {
     }
     job.id = store::new_id();
     job.created = now();
+    if job.kind == "kaggle" {
+        // Kaggle reports no progress, so activity is when watching began.
+        job.activity = job.created;
+    }
     Store::open().update(|jobs| jobs.push(job.clone()))?;
     if o.json {
         print_json(&job_json(&job));
@@ -170,6 +193,30 @@ fn add(o: &Options) -> Result<(), String> {
         println!("Watching {} as {}", job.name, job.id);
     }
     Ok(())
+}
+
+fn absolute(path: &str) -> Result<PathBuf, String> {
+    std::path::absolute(path).map_err(|e| format!("bad path {path}: {e}"))
+}
+
+/// The kaggle CLI to check with, as an absolute path, because the timer's
+/// PATH rarely has the virtualenv that holds it: --kaggle if given, else
+/// kaggle on PATH, else ./.venv/bin/kaggle.
+fn kaggle_cli(given: Option<&str>) -> Result<PathBuf, String> {
+    let found = match given {
+        Some(path) => Some(absolute(path)?),
+        None => std::env::var_os("PATH")
+            .iter()
+            .flat_map(std::env::split_paths)
+            .map(|dir| dir.join("kaggle"))
+            .chain(std::path::absolute(".venv/bin/kaggle").ok())
+            .find(|path| path.is_file()),
+    };
+    match found {
+        Some(path) if path.is_file() => Ok(path),
+        Some(path) => Err(format!("no kaggle CLI at {}", path.display())),
+        None => Err("cannot find the kaggle CLI; pass --kaggle PATH".into()),
+    }
 }
 
 /// Quotes only the words that need it, so the command reads naturally.
@@ -186,14 +233,24 @@ fn display_command(command: &[String]) -> String {
 
 fn run(o: &Options) -> Result<(), String> {
     let first = o.command.first().ok_or("nothing to run; put the command after --")?;
-    let stall = o.stall()?.unwrap_or(20);
-    let store = Store::open();
+    let name = o.values.get("name").unwrap_or(first);
+    let cwd = std::env::current_dir().map_err(|e| format!("no working directory: {e}"))?;
+    let job = start(&Store::open(), name, &o.command, &cwd, o.stall()?.unwrap_or(20))?;
+    if o.json {
+        print_json(&job_json(&job));
+    } else {
+        println!("Started {} as {} (pid {})\nLog: {}", job.name, job.id, job.number("pid"), job.text("log"));
+    }
+    Ok(())
+}
+
+/// Starts `command` in `cwd` in the background and adds it as a local job.
+pub fn start(store: &Store, name: &str, command: &[String], cwd: &Path, stall: i64) -> Result<Job, String> {
     store.update(|_| ())?; // creates the directories
 
     let id = store::new_id();
     let log = store.log_dir().join(format!("{id}.log"));
     let exit = store.log_dir().join(format!("{id}.exit"));
-    let cwd = std::env::current_dir().map_err(|e| format!("no working directory: {e}"))?;
 
     // A small shell owns the command so its exit code lands in a file, which
     // is how a later `deadbeat check` tells done from failed. Its own session
@@ -203,7 +260,8 @@ fn run(o: &Options) -> Result<(), String> {
         .args(["-c", r#"log=$1 exitf=$2; shift 2; "$@" >"$log" 2>&1 </dev/null; echo $? >"$exitf""#, "deadbeat-run"])
         .arg(&log)
         .arg(&exit)
-        .args(&o.command)
+        .args(command)
+        .current_dir(cwd)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -219,11 +277,11 @@ fn run(o: &Options) -> Result<(), String> {
 
     let started = now();
     let job = Job {
-        id: id.clone(),
-        name: o.values.get("name").cloned().unwrap_or_else(|| first.clone()),
+        id,
+        name: name.to_string(),
         kind: "local".into(),
         spec: spec(json!({
-            "command": display_command(&o.command),
+            "command": display_command(command),
             "cwd": cwd,
             "pid": pid,
             "ticks": probe::start_ticks(pid),
@@ -237,12 +295,7 @@ fn run(o: &Options) -> Result<(), String> {
         ..Job::default()
     };
     store.update(|jobs| jobs.push(job.clone()))?;
-    if o.json {
-        print_json(&job_json(&job));
-    } else {
-        println!("Started {} as {} (pid {pid})\nLog: {}", job.name, job.id, log.display());
-    }
-    Ok(())
+    Ok(job)
 }
 
 fn check(o: &Options) -> Result<(), String> {

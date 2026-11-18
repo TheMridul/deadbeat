@@ -22,6 +22,7 @@ function source(job) {
   if (job.kind === "ssh") return text(s.host) + ":" + text(s.log)
   if (job.kind === "ec2") return text(s.instance)
   if (job.kind === "git") return text(s.repo) + "@" + text(s.branch)
+  if (job.kind === "kaggle") return text(s.kernel)
   return job.kind
 }
 
@@ -46,7 +47,8 @@ function parseJobs(raw) {
       spec: {
         command: text(spec.command), host: text(spec.host, 255), log: text(spec.log, 1024),
         instance: text(spec.instance, 64), region: text(spec.region, 32),
-        repo: text(spec.repo, 200), branch: text(spec.branch, 255)
+        repo: text(spec.repo, 200), branch: text(spec.branch, 255),
+        kernel: text(spec.kernel, 200)
       },
       state: STATES.indexOf(j.state) >= 0 ? j.state : "unknown",
       detail: text(j.detail),
@@ -118,6 +120,8 @@ function followCommand(job) {
     var region = /^[a-z0-9-]+$/.test(s.region) ? "?region=" + s.region : ""
     return ["xdg-open", "https://console.aws.amazon.com/ec2/home" + region + "#InstanceDetails:instanceId=" + s.instance]
   }
+  if (job.kind === "kaggle" && /^[\w.-]+\/[\w.-]+$/.test(s.kernel))
+    return ["xdg-open", "https://www.kaggle.com/code/" + s.kernel]
   return null
 }
 
