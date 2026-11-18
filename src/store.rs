@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-/// One watched job. `kind` is "local", "ssh", "ec2" or "git", and `spec` holds
+/// One watched job. `kind` is "local", "ssh", "ec2", "git" or "kaggle", and `spec` holds
 /// what the probe for that kind needs. The fields after `stall_minutes` are the
 /// result of the latest check.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -64,13 +64,15 @@ impl Job {
         self.spec.get(key).and_then(Value::as_i64).unwrap_or(0)
     }
 
-    /// What the job watches, in one short line: a command, host:log, an instance.
+    /// What the job watches, in one short line: a command, host:log, an
+    /// instance, a branch or a kernel.
     pub fn source(&self) -> String {
         match self.kind.as_str() {
             "local" => self.text("command").to_string(),
             "ssh" => format!("{}:{}", self.text("host"), self.text("log")),
             "ec2" => self.text("instance").to_string(),
             "git" => format!("{}@{}", self.text("repo"), self.text("branch")),
+            "kaggle" => self.text("kernel").to_string(),
             other => other.to_string(),
         }
     }

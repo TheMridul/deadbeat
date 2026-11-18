@@ -26,11 +26,24 @@ It's two parts in one repository:
 | A log on an ssh host | `deadbeat add ssh --name N --host H --log PATH [--pid PID]` | the log is quiet for `--stall` minutes (20) |
 | An EC2 instance | `deadbeat add ec2 --name N --instance ID [--region R]` | never; it ends when the instance stops |
 | A branch a loop pushes to | `deadbeat add git --name N --repo OWNER/REPO --branch B` | no new commit for `--stall` minutes (180) |
+| A Kaggle kernel run | `deadbeat add kaggle --name N --kernel OWNER/SLUG [--output DIR]` | never; it is done on complete, failed on error or cancel |
 
 `deadbeat run` starts the command in its own session, so it survives the
 terminal or agent that started it, and records the exit code beside its log
-in `~/.local/state/deadbeat/logs/`. Remote checks use your own `ssh`, `aws`
-and `gh`, each with a 60-second limit.
+in `~/.local/state/deadbeat/logs/`. Remote checks use your own `ssh`, `aws`,
+`gh` and `kaggle`, each with a 60-second limit.
+
+An EC2 instance that terminates stays `ended` after AWS forgets it, about an
+hour later. A Kaggle kernel counts as running while it is queued or running.
+With `--output DIR`, deadbeat fetches the kernel's output into `DIR` once the
+run completes or fails (a failed run's output holds its log), as a job of its
+own, so you hear when the download finishes too. Deadbeat finds the `kaggle`
+CLI on the PATH or in `./.venv/bin/` when you add the job, or takes
+`--kaggle PATH`, and uses the sign-in that CLI already has.
+
+Notifications go through `notify-send`, so Do Not Disturb silences them like
+any other app's. The timer's journal (`journalctl --user -u deadbeat`) logs
+each one it sends.
 
 ## Install
 
@@ -71,6 +84,7 @@ Every command takes `--json`, exits 0 or 1, and writes errors to stderr.
 ```sh
 deadbeat run --name "stage 3" --stall 30 -- python3 train.py --stage 3
 deadbeat add git --name "agent loop" --repo me/lab --branch agent-loop
+deadbeat add kaggle --name "T4 training" --kernel me/train --output kaggle_out/train
 deadbeat check --json     # probe everything now and notify
 deadbeat list --json      # last known state, no probing
 deadbeat remove ID        # stop watching; the job keeps running
@@ -85,7 +99,7 @@ shows a count while jobs run, and turns red when one stalls or fails.
 |---|---|
 | Space | Check every job now |
 | J / K or Down / Up | Select a job |
-| Enter or click | Follow its log in a terminal, or open its GitHub or AWS page |
+| Enter or click | Follow its log in a terminal, or open its GitHub, AWS or Kaggle page |
 | X / Delete | Stop watching it (U undoes, for a few seconds) |
 | Esc | Close |
 

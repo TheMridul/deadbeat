@@ -1,6 +1,6 @@
 # Builds the working tree: cd pkgbuild && makepkg -si
 pkgname=deadbeat
-pkgver=0.2.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc='Catches your deadbeat jobs: a notification when a long job stalls, finishes or fails'
 arch=('x86_64' 'aarch64')

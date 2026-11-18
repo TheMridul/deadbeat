@@ -72,3 +72,55 @@ fn the_skill_installs_where_asked() {
     let skill = std::fs::read_to_string(dir.path().join("deadbeat/SKILL.md")).unwrap();
     assert!(skill.starts_with("---\nname: deadbeat"));
 }
+
+#[test]
+fn a_kaggle_kernel_that_completes_fetches_its_output() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = dir.path().join("state");
+    let out = dir.path().join("out");
+    // Stands in for the kaggle CLI: the kernel is complete, and "output"
+    // writes a file where it was asked to.
+    let cli = dir.path().join("kaggle");
+    std::fs::write(
+        &cli,
+        concat!(
+            "#!/bin/sh\n",
+            "case \"$2\" in\n",
+            "  status) echo \"$3 has status \\\"KernelWorkerStatus.COMPLETE\\\"\" ;;\n",
+            "  output) echo fetched > \"$5/result.txt\" ;;\n",
+            "esac\n",
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&cli, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+
+    let bad_slug = ["add", "kaggle", "--name", "k", "--kernel", "me/train;rm"];
+    let (ok, _, err) = deadbeat(&state, &bad_slug);
+    assert!(!ok);
+    assert!(err.contains("--kernel OWNER/SLUG"), "{err}");
+    let no_cli = ["add", "kaggle", "--name", "k", "--kernel", "me/train", "--kaggle", "/nonexistent/kaggle"];
+    let (ok, _, err) = deadbeat(&state, &no_cli);
+    assert!(!ok);
+    assert_eq!(err.trim(), "deadbeat: no kaggle CLI at /nonexistent/kaggle");
+
+    let (cli, out_dir) = (cli.to_str().unwrap(), out.to_str().unwrap());
+    let add = ["add", "kaggle", "--name", "train", "--kernel", "me/train", "--kaggle", cli, "--output", out_dir, "--json"];
+    let (ok, job, err) = deadbeat(&state, &add);
+    assert!(ok, "{err}");
+    assert_eq!(job["source"], "me/train");
+
+    let (_, jobs, _) = deadbeat(&state, &["check", "--json"]);
+    assert_eq!(jobs[0]["state"], "done");
+    assert_eq!(jobs[0]["notified"], "done");
+    // The download is a job of its own, started in the output directory.
+    assert_eq!(jobs[1]["name"], "train output");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !out.join("result.txt").exists() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    assert_eq!(std::fs::read_to_string(out.join("result.txt")).unwrap(), "fetched\n");
+
+    // A second check announces nothing new and starts no second download.
+    let (_, jobs, _) = deadbeat(&state, &["check", "--json"]);
+    assert_eq!(jobs.as_array().unwrap().len(), 2);
+}

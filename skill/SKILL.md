@@ -1,6 +1,6 @@
 ---
 name: deadbeat
-description: Register long-running jobs (training runs, exports, builds, remote scripts, EC2 instances, agent loops) with deadbeat so the user is notified when they stall, finish or fail, and read their state instead of polling. Use whenever you start or hand back a job that will outlive your turn, or are asked "is it stuck" or "check status".
+description: Register long-running jobs (training runs, exports, builds, remote scripts, EC2 instances, Kaggle kernels, agent loops) with deadbeat so the user is notified when they stall, finish or fail, and read their state instead of polling. Use whenever you start or hand back a job that will outlive your turn, or are asked "is it stuck" or "check status".
 ---
 
 # Deadbeat
@@ -23,9 +23,18 @@ code. `--stall` is how many minutes of silent log mean stuck (default 20).
     deadbeat add ssh --name "labels export" --host build-box --log ~/job.log --pid 4242
     deadbeat add ec2 --name "loop box" --instance i-0123456789abcdef0 --region us-east-1
     deadbeat add git --name "agent loop" --repo OWNER/REPO --branch agent-loop --stall 240
+    deadbeat add kaggle --name "T4 training" --kernel OWNER/SLUG --output kaggle_out/train
 
 A git job is stalled when the branch gets no new commit for `--stall` minutes
 (default 180), which suits loops that push once per iteration.
+
+A kaggle job is running while the kernel is queued or running, done when it
+completes, and failed on an error or cancel. Add it right after
+`kaggle kernels push`, from the directory whose `.venv/bin/kaggle` you use (or
+pass `--kaggle PATH`); this replaces wrapping a polling script in
+`deadbeat run`. With `--output DIR` the output is fetched when the run ends,
+as a separate job named "NAME output". Never print or copy Kaggle credentials;
+the CLI reads its own.
 
 ## Reading state
 
@@ -35,7 +44,8 @@ A git job is stalled when the branch gets no new commit for `--stall` minutes
 Each job has `id`, `name`, `kind`, `state` (`running`, `stalled`, `done`,
 `failed`, `ended`, `unknown`), `detail` (latest log line, commit or error),
 `activity` (last sign of life, epoch seconds) and `source`. `unknown` means
-the check itself failed; `detail` says why, often an expired `aws login`.
+the check itself failed; `detail` says why, often an expired `aws login` or a
+missing Kaggle sign-in.
 
 Report what deadbeat says rather than re-deriving it. When you are done with a
 job, `deadbeat remove ID` stops watching it (the job itself keeps running).
